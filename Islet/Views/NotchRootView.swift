@@ -92,10 +92,16 @@ struct NotchRootView: View {
                 .padding(.bottom, 12)
                 .frame(width: model.openSize.width, height: NotchViewModel.openBodyHeight)
             }
-            .transition(.opacity.combined(with: .offset(y: -8)))
+            // Content fades in once the shape has room, and fades out fast so nothing
+            // lingers while the shape collapses upward.
+            .transition(.asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)).animation(.easeOut(duration: 0.22).delay(0.08)),
+                removal: .opacity.combined(with: .scale(scale: 0.94, anchor: .top)).animation(.easeIn(duration: 0.11))))
         } else {
             ClosedContentView(model: model, namespace: namespace)
-                .transition(.opacity)
+                .transition(.asymmetric(
+                    insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
+                    removal: .opacity.animation(.easeIn(duration: 0.08))))
         }
     }
 }
