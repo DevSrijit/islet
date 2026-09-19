@@ -7,6 +7,8 @@ struct HomeView: View {
 
     private var prefs: Preferences { model.prefs }
     private var tint: Color { prefs.waveformStyle == "monochrome" ? .white : model.tint }
+    /// Artwork radius stays concentric with the island: outer radius minus the content margin.
+    private var artworkRadius: CGFloat { NotchRootView.openBottomRadius - NotchRootView.contentMargin }
 
     var body: some View {
         if let playing = model.nowPlaying {
@@ -21,7 +23,7 @@ struct HomeView: View {
     private func nowPlaying(_ playing: NowPlaying) -> some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
-                FlipArtwork(data: playing.artworkData, fallback: model.sourceIcon, cornerRadius: 8, flipEnabled: prefs.artworkFlip)
+                FlipArtwork(data: playing.artworkData, fallback: model.sourceIcon, cornerRadius: artworkRadius, flipEnabled: prefs.artworkFlip)
                     .frame(width: 46, height: 46)
                     .matchedGeometryEffect(id: "artwork", in: namespace)
                     .onTapGesture { model.openSourceApp() }
@@ -37,8 +39,8 @@ struct HomeView: View {
                 }
                 Spacer(minLength: 8)
                 Visualizer(playing: playing.isPlaying, tint: tint, style: prefs.waveformStyle,
-                           levels: prefs.liveWaveform && model.audioTap.isRunning ? model.audioTap.bands : nil, barCount: 5, height: 12)
-                    .padding(.trailing, 4)
+                           levels: prefs.liveWaveform && model.audioTap.isRunning ? model.audioTap.bands : nil, barCount: 5, height: 14)
+                    .padding(.trailing, 2)
             }
             .frame(height: 46)
             timeline(for: playing)
@@ -50,13 +52,24 @@ struct HomeView: View {
         model.source?.name ?? NSImage.appName(bundleID: playing.appBundleID) ?? "source app"
     }
 
+    /// The scrubber, or one quiet line when the player reports no duration (live video, streams).
+    @ViewBuilder
     private func timeline(for playing: NowPlaying) -> some View {
-        TimelineView(.periodic(from: .now, by: playing.isPlaying ? 0.5 : 60)) { context in
-            Scrubber(position: playing.position(at: context.date) ?? 0,
-                     duration: playing.duration ?? 0,
-                     tint: tint,
-                     onScrubbing: { model.isScrubbing = $0 },
-                     onSeek: { model.media.seek(to: $0) })
+        if let duration = playing.duration, duration.isFinite, duration > 0 {
+            TimelineView(.periodic(from: .now, by: playing.isPlaying ? 0.5 : 60)) { context in
+                Scrubber(position: playing.position(at: context.date) ?? 0,
+                         duration: duration,
+                         tint: tint,
+                         onScrubbing: { model.isScrubbing = $0 },
+                         onSeek: { model.media.seek(to: $0) })
+            }
+        } else {
+            Text(model.source?.name ?? NSImage.appName(bundleID: playing.appBundleID) ?? "Live")
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.45))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 14)
         }
     }
 
@@ -81,7 +94,7 @@ struct HomeView: View {
                 HoverButton(symbol: playing.isPlaying ? "pause.fill" : "play.fill", size: 24, diameter: 38, help: playing.isPlaying ? "Pause" : "Play") {
                     model.media.togglePlayPause(); Haptics.play(.generic)
                 }
-                .contentTransition(.symbolEffect(.replace.downUp))
+                .contentTransition(.symbolEffect(.replace))
                 HoverButton(symbol: "forward.fill", size: 17, diameter: 32, dim: true, help: "Next") { model.media.next(); Haptics.play(.generic) }
             }
             Spacer(minLength: 0)
@@ -102,8 +115,8 @@ struct HomeView: View {
 
     private var idle: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 16) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(context.date, format: .dateTime.hour().minute())
                         .font(.system(size: 30, weight: .semibold, design: .rounded).monospacedDigit())
                         .contentTransition(.numericText())
@@ -114,21 +127,24 @@ struct HomeView: View {
                     HStack(spacing: 6) {
                         if let battery = model.battery {
                             BatteryGlyph(percent: battery.percent, charging: battery.isPluggedIn, low: battery.percent <= prefs.batteryLowThreshold, width: 20)
-                            Text("\(battery.percent)%").font(.system(size: 10.5, weight: .semibold, design: .rounded)).foregroundStyle(.white.opacity(0.6))
+                            Text("\(battery.percent)%")
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.6))
+                                .contentTransition(.numericText())
                         }
                         if let focus = model.focus {
                             Image(systemName: focus.symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(Color(red: 0.55, green: 0.5, blue: 1))
                         }
                     }
                 }
-                .frame(width: 120, alignment: .leading)
-                Rectangle().fill(.white.opacity(0.1)).frame(width: 1).padding(.vertical, 8)
+                .frame(width: 124, alignment: .leading)
+                Rectangle().fill(.white.opacity(0.1)).frame(width: 1).padding(.vertical, 10)
                 VStack(alignment: .leading, spacing: 6) {
                     if prefs.calendarEnabled {
                         CalendarSummary(calendar: model.calendar, useColor: prefs.calendarUseColor, now: context.date)
                     } else {
                         Text("Nothing playing").font(.system(size: 13, weight: .semibold))
-                        Text("Play something in any app and it appears here.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                        Text("Music appears here.").font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.5))
                     }
                     Spacer(minLength: 0)
                 }
@@ -136,6 +152,7 @@ struct HomeView: View {
                 .padding(.top, 4)
             }
             .padding(.top, 8)
+            .padding(.horizontal, 4)
         }
     }
 }
@@ -150,7 +167,7 @@ struct CalendarSummary: View {
             Text(calendar.denied ? "Calendar access is off" : "Show your day here")
                 .font(.system(size: 13, weight: .semibold))
             if calendar.denied {
-                Text("Enable it in System Settings › Privacy.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                Text("Turn it on in System Settings › Privacy.").font(.system(size: 11, weight: .medium)).foregroundStyle(.white.opacity(0.5))
             } else {
                 Button("Allow calendar access") { Task { await calendar.requestAccess() } }
                     .buttonStyle(.plain)
@@ -159,21 +176,21 @@ struct CalendarSummary: View {
             }
         } else if let event = calendar.currentEvent ?? calendar.nextEvent {
             let isNow = event.start <= now
-            HStack(alignment: .top, spacing: 7) {
-                RoundedRectangle(cornerRadius: 1.5).fill(useColor ? Color(nsColor: event.color) : .white).frame(width: 3, height: 30)
+            HStack(alignment: .top, spacing: 8) {
+                RoundedRectangle(cornerRadius: 1.5).fill(useColor ? Color(nsColor: event.color) : .white).frame(width: 3, height: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(isNow ? "Now" : "Up next")
                         .font(.system(size: 9.5, weight: .bold)).foregroundStyle(.white.opacity(0.4)).textCase(.uppercase)
                     Text(event.title).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                     Text("\(event.start, format: .dateTime.hour().minute()) – \(event.end, format: .dateTime.hour().minute())")
-                        .font(.system(size: 10.5, weight: .medium, design: .rounded)).foregroundStyle(.white.opacity(0.55))
+                        .font(.system(size: 10.5, weight: .medium, design: .rounded).monospacedDigit()).foregroundStyle(.white.opacity(0.55))
                 }
             }
+            .contentShape(Rectangle())
             .onTapGesture { calendar.openCalendarApp() }
         } else {
             Text(calendar.events.isEmpty ? "No events today" : "No more events today")
                 .font(.system(size: 13, weight: .semibold))
-            Text("Enjoy the free time.").font(.system(size: 11)).foregroundStyle(.white.opacity(0.45))
         }
     }
 }
@@ -182,6 +199,7 @@ struct CalendarSummary: View {
 struct OutputDeviceButton: View {
     @State private var devices: [AudioDeviceInfo.OutputDevice] = []
     @State private var current = AudioDeviceInfo.defaultOutput()
+    @State private var hovering = false
 
     var body: some View {
         Menu {
@@ -200,14 +218,17 @@ struct OutputDeviceButton: View {
             }
         } label: {
             Image(systemName: current?.symbol ?? "speaker.wave.2.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(hovering ? 1 : 0.62))
                 .frame(width: 24, height: 24)
+                .background(Circle().fill(.white.opacity(hovering ? 0.14 : 0)))
                 .contentShape(Circle())
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
         .help(current?.name ?? "Audio output")
         .onAppear { devices = AudioDeviceInfo.outputDevices(); current = AudioDeviceInfo.defaultOutput() }
     }

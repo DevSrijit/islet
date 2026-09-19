@@ -13,28 +13,33 @@ struct BatteryGlyph: View {
         return .white
     }
 
+    private var level: CGFloat { CGFloat(min(max(percent, 0), 100)) / 100 }
+
     var body: some View {
         let height = width * 0.46
+        let outerRadius = height * 0.3
+        let inset: CGFloat = 2
         HStack(spacing: 1.5) {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: height * 0.28, style: .continuous)
-                    .stroke(.white.opacity(0.45), lineWidth: 1)
-                RoundedRectangle(cornerRadius: height * 0.2, style: .continuous)
+                RoundedRectangle(cornerRadius: outerRadius, style: .continuous)
+                    .stroke(.white.opacity(0.5), lineWidth: 1)
+                RoundedRectangle(cornerRadius: max(outerRadius - inset, 1), style: .continuous)
                     .fill(color)
-                    .padding(2)
-                    .frame(width: max((width - 4) * CGFloat(percent) / 100 + 4, 6))
+                    .frame(width: max((width - 2 * inset) * level, height - 2 * inset))
+                    .padding(inset)
                 if charging {
                     Image(systemName: "bolt.fill")
-                        .font(.system(size: height * 0.7, weight: .bold))
-                        .foregroundStyle(.black.opacity(0.8))
+                        .font(.system(size: height * 0.72, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.85))
                         .frame(width: width, height: height)
                 }
             }
             .frame(width: width, height: height)
             RoundedRectangle(cornerRadius: 1)
-                .fill(.white.opacity(0.45))
+                .fill(.white.opacity(0.5))
                 .frame(width: 1.5, height: height * 0.4)
         }
-        .animation(.easeOut(duration: 0.3), value: percent)
+        .animation(.spring(duration: 0.4, bounce: 0.1), value: percent)
+        .animation(.easeOut(duration: 0.25), value: charging)
     }
 }

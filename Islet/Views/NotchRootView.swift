@@ -8,11 +8,22 @@ struct NotchRootView: View {
     private var prefs: Preferences { model.prefs }
     private var open: Bool { model.state == .open }
 
+    /// Corner radii of the island. The open radius sets the concentric radii inside it.
+    static let openBottomRadius: CGFloat = 22
+    static let closedBottomRadius: CGFloat = 11
+    static let openTopRadius: CGFloat = 8
+    static let closedTopRadius: CGFloat = 6
+    /// Side margin of the open content. Inner radii are `openBottomRadius - contentMargin`.
+    static let contentMargin: CGFloat = 14
+
     var body: some View {
         ZStack(alignment: .top) {
             Color.clear
             if open, prefs.progressiveBlur {
-                BlurBackdrop(fade: NotchViewModel.haloFade, cornerRadius: 22)
+                BlurBackdrop(fade: NotchViewModel.haloFade,
+                             cornerRadius: Self.openBottomRadius,
+                             edgeInset: Self.openTopRadius,
+                             topInset: model.notchSize.height)
                     .frame(width: model.openSize.width + 2 * NotchViewModel.haloFade,
                            height: model.openSize.height + NotchViewModel.haloFade)
                     .allowsHitTesting(false)
@@ -30,7 +41,8 @@ struct NotchRootView: View {
 
     private var island: some View {
         let size = model.currentSize
-        let shape = NotchShape(topRadius: open ? 8 : 6, bottomRadius: open ? 22 : 11)
+        let shape = NotchShape(topRadius: open ? Self.openTopRadius : Self.closedTopRadius,
+                               bottomRadius: open ? Self.openBottomRadius : Self.closedBottomRadius)
         return ZStack(alignment: .top) {
             shape
                 .fill(Color.black)
@@ -39,7 +51,7 @@ struct NotchRootView: View {
                         shape.stroke(.white.opacity(0.14), lineWidth: 1).padding(0.5)
                     }
                 }
-                .shadow(color: .black.opacity(open ? 0.35 : 0), radius: 14, y: 6)
+                .shadow(color: .black.opacity(open ? 0.28 : 0), radius: 18, y: 8)
             content
                 .clipShape(shape)
         }
@@ -52,7 +64,7 @@ struct NotchRootView: View {
             Button("Home") { model.open(tab: .home) }
             if prefs.shelfEnabled { Button("Shelf") { model.open(tab: .shelf) } }
             Divider()
-            SettingsLink { Text("Settings…") }
+            Button("Settings…") { AppDelegate.shared?.openSettings() }
             Divider()
             Button("Quit Islet") { NSApp.terminate(nil) }
         }
@@ -64,15 +76,20 @@ struct NotchRootView: View {
             VStack(spacing: 0) {
                 // The menu bar band stays empty: only the black ears live there.
                 Color.clear.frame(height: model.notchSize.height)
-                Group {
+                ZStack {
                     switch model.tab {
-                    case .home: HomeView(model: model, namespace: namespace)
-                    case .shelf: ShelfView(model: model)
+                    case .home:
+                        HomeView(model: model, namespace: namespace)
+                            .transition(.opacity.combined(with: .offset(x: -12)))
+                    case .shelf:
+                        ShelfView(model: model)
+                            .transition(.opacity.combined(with: .offset(x: 12)))
                     }
                 }
-                .padding(.horizontal, 18)
+                .animation(model.spring, value: model.tab)
+                .padding(.horizontal, Self.contentMargin)
                 .padding(.top, 6)
-                .padding(.bottom, 14)
+                .padding(.bottom, 12)
                 .frame(width: model.openSize.width, height: NotchViewModel.openBodyHeight)
             }
             .transition(.opacity.combined(with: .offset(y: -8)))
