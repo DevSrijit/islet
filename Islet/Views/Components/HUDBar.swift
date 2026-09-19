@@ -16,23 +16,25 @@ struct HUDBar: View {
         }
     }
 
+    private var clamped: Double { muted ? 0 : min(max(level, 0), 1) }
+
     var body: some View {
         HStack(spacing: 8) {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.18))
-                    Capsule()
+                    Capsule(style: .continuous).fill(.white.opacity(0.2))
+                    Capsule(style: .continuous)
                         .fill(fill)
-                        .frame(width: max(geo.size.width * (muted ? 0 : level), muted ? 0 : 6))
+                        .frame(width: clamped > 0 ? max(geo.size.width * clamped, 6) : 0)
                         .shadow(color: style == "glow" ? .white.opacity(0.9) : .clear, radius: 5)
                         .shadow(color: style == "glow" ? .white.opacity(0.5) : .clear, radius: 12)
                 }
             }
             .frame(height: 6)
-            .animation(.spring(duration: 0.3, bounce: 0.1), value: level)
+            .animation(.spring(duration: 0.3, bounce: 0.1), value: clamped)
             if showPercentage {
-                Text(muted ? "0%" : "\(Int((level * 100).rounded()))%")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                Text("\(Int((clamped * 100).rounded()))%")
+                    .font(.system(size: 11.5, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.85))
                     .contentTransition(.numericText())
                     .frame(width: 34, alignment: .trailing)

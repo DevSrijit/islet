@@ -72,8 +72,9 @@ final class NotchViewModel {
     static let openWidth: CGFloat = 364
     static let openBodyHeight: CGFloat = 142
     /// How far the blur halo extends past the island before it fades out completely.
-    static let haloFade: CGFloat = 56
-    static let panelMargin = CGSize(width: 160, height: 150)
+    static let haloFade: CGFloat = 128
+    /// Extra panel room around the open island for the halo and the shadow.
+    static let panelMargin = CGSize(width: 2 * haloFade + 24, height: haloFade + 48)
 
     // MARK: State
     var geometry: NotchGeometry

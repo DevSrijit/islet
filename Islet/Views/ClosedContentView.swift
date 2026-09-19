@@ -87,8 +87,8 @@ struct ClosedContentView: View {
             }
             if let label = hudLabel(for: activity) {
                 Text(label)
-                    .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
             }
         }
@@ -177,6 +177,7 @@ struct ClosedContentView: View {
         case .capsLock(let on):
             peekLabel("Caps Lock", value: on ? "On" : "Off", color: .white)
         case .track(let title):
+            // Width follows the title length so short titles do not widen the notch for nothing.
             MarqueeText(text: title, font: .system(size: 12, weight: .semibold), speed: 32).id(title)
                 .frame(width: min(Self.maxTextWidth, CGFloat(title.count) * 7.2 + 8))
         case .copied:

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A borderless symbol button with a soft highlight on hover and a squish on press.
+/// A borderless symbol button: soft highlight on hover, squish on press, symbol bounce on tap.
 struct HoverButton: View {
     let symbol: String
     var size: CGFloat = 14
@@ -14,11 +14,13 @@ struct HoverButton: View {
 
     @State private var hovering = false
     @State private var pressed = false
+    @State private var taps = 0
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: size, weight: .semibold))
             .foregroundStyle(active ? tint : .white.opacity(dim ? 0.62 : 1))
+            .symbolEffect(.bounce.down, value: taps)
             .frame(width: diameter, height: diameter)
             .background(Circle().fill(.white.opacity(hovering ? 0.14 : 0)))
             .scaleEffect(pressed ? 0.86 : 1)
@@ -29,10 +31,13 @@ struct HoverButton: View {
                     .onChanged { _ in if !pressed { withAnimation(.notchQuick) { pressed = true } } }
                     .onEnded { value in
                         withAnimation(.notchQuick) { pressed = false }
-                        if abs(value.translation.width) < 12, abs(value.translation.height) < 12 { action() }
+                        guard abs(value.translation.width) < 12, abs(value.translation.height) < 12 else { return }
+                        taps += 1
+                        action()
                     }
             )
             .animation(.easeOut(duration: 0.15), value: hovering)
+            .animation(.notchQuick, value: active)
             .help(help ?? "")
     }
 }
