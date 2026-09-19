@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Islet</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Islet</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Islet asks your browser which tab is playing so it can show the site's icon.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Islet reads the system audio level to animate the live waveform. Nothing is recorded or stored.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Islet shows a peek when AirPods and other Bluetooth accessories connect, with their battery level.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Islet shows your next calendar event inside the notch.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>MIT License. Copyright (c) 2026 Srijit Ghosh.</string>
+</dict>
+</plist>

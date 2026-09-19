@@ -1,0 +1,20 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Build
+        run: |
+          xcodebuild -project Islet.xcodeproj -scheme Islet -configuration Debug \
+            -derivedDataPath build/DerivedData build \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES | xcpretty || true
+          test -d build/DerivedData/Build/Products/Debug/Islet.app
