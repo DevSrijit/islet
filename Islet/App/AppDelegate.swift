@@ -11,12 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitors: [Any] = []
     private var hotKey: HotKey?
     private var observers: [Any] = []
+    private var signalSources: [DispatchSourceSignal] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.shared = self
         NSApp.setActivationPolicy(.accessory)
         let prefs = Preferences.shared
 
+        installSignalHandlers()
         rebuildPanel()
         installMonitors()
         updateHotKey()
@@ -38,7 +40,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        shutDown()
+    }
+
+    /// Stops the services and hands the system bezels back. Safe to call more than once.
+    private func shutDown() {
         model?.stop()
+        SystemHUDSuppressor.shared.resumeForExit()
+    }
+
+    /// A `kill` or a logout sends SIGTERM, which skips `applicationWillTerminate`. The suppressed
+    /// `OSDUIHelper` must be resumed on that path too, else the system bezels stay gone.
+    private func installSignalHandlers() {
+        for sig in [SIGTERM, SIGINT, SIGHUP] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler { [weak self] in
+                self?.shutDown()
+                exit(0)
+            }
+            source.resume()
+            signalSources.append(source)
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -84,6 +107,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "displayTarget", "simulatedNotch": rebuildPanel()
         case "hideFromScreenCapture": panel?.sharingType = Preferences.shared.hideFromScreenCapture ? .none : .readOnly
         case "globalHotkey": updateHotKey()
+        case "notchHeightOffset", "notchWidthOffset":
+            // Sizes are computed from the preference, so only the panel frame needs a refresh.
+            if let model { panel?.setFrame(model.panelFrame, display: true) }
+            model?.preferencesChanged(key: key)
         default: model?.preferencesChanged(key: key)
         }
     }

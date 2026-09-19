@@ -9,23 +9,47 @@ struct FocusMode: Equatable {
 /// Watches the Focus database macOS keeps under ~/Library/DoNotDisturb.
 ///
 /// There is no public API for the active Focus, but the system writes the active assertion and the
-/// mode catalogue to two JSON files, so we watch that folder.
+/// mode catalogue to two JSON files, so we watch that folder. The system replaces the folder now
+/// and then, so the watcher reopens it when it goes away.
 final class FocusService {
     var onChange: ((FocusMode?) -> Void)?
     private(set) var current: FocusMode?
 
+    static let retryInterval: TimeInterval = 30
+
     private let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/DoNotDisturb/DB")
     private var source: DispatchSourceFileSystemObject?
-    private var descriptor: Int32 = -1
     private var debounce: DispatchWorkItem?
+    private var retryTimer: Timer?
+    private var started = false
 
     func start() {
+        guard !started else { return }
+        started = true
         current = read()
-        descriptor = open(folder.path, O_EVTONLY)
-        guard descriptor >= 0 else { return }
+        watch()
+    }
+
+    /// Opens the folder and installs the file system source. Retries later when the folder is missing.
+    private func watch() {
+        source?.cancel(); source = nil
+        retryTimer?.invalidate(); retryTimer = nil
+        let descriptor = open(folder.path, O_EVTONLY)
+        guard descriptor >= 0 else {
+            retryTimer = Timer.scheduledTimer(withTimeInterval: Self.retryInterval, repeats: false) { [weak self] _ in self?.watch() }
+            return
+        }
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: descriptor, eventMask: [.write, .rename, .delete], queue: .main)
-        source.setEventHandler { [weak self] in self?.scheduleRead() }
-        source.setCancelHandler { [descriptor] in close(descriptor) }
+        source.setEventHandler { [weak self] in
+            guard let self else { return }
+            let flags = self.source?.data ?? []
+            self.scheduleRead()
+            if flags.contains(.delete) || flags.contains(.rename) {
+                // The folder itself moved. Reopen it once the system has written the new one.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.watch() }
+            }
+        }
+        source.setCancelHandler { close(descriptor) }
         source.resume()
         self.source = source
     }

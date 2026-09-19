@@ -47,6 +47,14 @@ enum TransientActivity: Equatable {
         }
     }
 
+    /// A HUD replaces a system bezel, so it must stay up long enough to read.
+    var isHUD: Bool {
+        switch self {
+        case .volume, .brightness, .keyboardBacklight: return true
+        default: return false
+        }
+    }
+
     @MainActor
     var duration: TimeInterval {
         let p = Preferences.shared
@@ -75,8 +83,13 @@ final class NotchViewModel {
     static let haloFade: CGFloat = 56
     static let panelMargin = CGSize(width: 160, height: 150)
 
+    /// Every peek stays at least this long after the shape has finished animating in.
+    static let minimumPeekVisible: TimeInterval = 1.0
+
     // MARK: State
-    var geometry: NotchGeometry
+    var geometry: NotchGeometry {
+        didSet { systemState.screenFrame = geometry.screenFrame }
+    }
     var state: NotchState = .closed
     var tab: NotchTab = .home
     var isHovering = false
@@ -94,6 +107,9 @@ final class NotchViewModel {
     var transient: TransientActivity?
     var outputDeviceSymbol: String?
     var source: MediaSourceResolver.Source?
+
+    /// True when the current track reports a length and a playhead, so a scrubber makes sense.
+    var hasTimeline: Bool { nowPlaying?.hasTimeline ?? false }
 
     let prefs = Preferences.shared
     let shelf = ShelfStore()
@@ -114,12 +130,20 @@ final class NotchViewModel {
 
     private var openTask: Task<Void, Never>?
     private var closeTask: Task<Void, Never>?
+    private var tabResetTask: Task<Void, Never>?
     private var transientTask: Task<Void, Never>?
     private var idleTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
     private var lastTrackKey: String?
     private var horizontalScroll: CGFloat = 0
     private var verticalScroll: CGFloat = 0
     private var artworkTintCache: (Int, Color)?
+
+    /// One waiting peek of another family, shown once the current HUD has had its time.
+    private var queuedTransient: TransientActivity?
+    /// When the current peek family became fully visible (after the shape animated in).
+    private var transientVisibleFrom = Date.distantPast
+    private var transientDeadline = Date.distantPast
 
     init(geometry: NotchGeometry) {
         self.geometry = geometry
@@ -190,9 +214,20 @@ final class NotchViewModel {
         }
     }
 
+    /// How long `spring` takes to settle, for timers that wait on the shape.
+    var springDuration: TimeInterval {
+        switch prefs.animationSpeed {
+        case "smooth": return 0.6
+        case "instant": return 0.18
+        default: return 0.42
+        }
+    }
+
     // MARK: Lifecycle
 
     func start() {
+        systemState.screenFrame = geometry.screenFrame
+
         media.onUpdate = { [weak self] playing in self?.apply(nowPlaying: playing) }
         media.start()
 
@@ -273,19 +308,43 @@ final class NotchViewModel {
             guard let self, self.prefs.batteryEnabled, self.prefs.batteryLowPowerMode else { return }
             self.show(.lowPowerMode(on: on))
         }
-        systemState.onFullscreenChange = { [weak self] full in
-            guard let self else { return }
-            withAnimation(.easeInOut(duration: 0.25)) { self.isHidden = full && self.prefs.hideInFullscreen }
-            self.updateAudioTap()
-        }
+        systemState.onFullscreenChange = { [weak self] full in self?.applyFullscreen(full) }
         systemState.start()
 
-        SystemHUDSuppressor.shared.setEnabled(prefs.replaceSystemHUD)
+        // "Hide while the source app is active" must follow app switches, not only track changes.
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.prefs.hideWhileSourceActive, self.nowPlaying != nil else { return }
+                    self.updateMusicActivity()
+                }
+            }
+
+        updateHUDSuppression()
     }
 
+    /// Called once at quit. Blocks until the system bezels are back.
     func stop() {
         media.stop()
-        SystemHUDSuppressor.shared.setEnabled(false)
+        audioTap.stop()
+        SystemHUDSuppressor.shared.resumeForExit()
+    }
+
+    /// The system bezels are only worth hiding while Islet draws a replacement.
+    private func updateHUDSuppression() {
+        let wanted = prefs.replaceSystemHUD && (prefs.soundHUDEnabled || prefs.displayHUDEnabled || prefs.keyboardHUDEnabled)
+        SystemHUDSuppressor.shared.setEnabled(wanted)
+    }
+
+    private func applyFullscreen(_ full: Bool) {
+        let hidden = full && prefs.hideInFullscreen
+        guard hidden != isHidden else { return }
+        withAnimation(.easeInOut(duration: 0.25)) { isHidden = hidden }
+        if hidden {
+            isHovering = false
+            close()
+        }
+        updateAudioTap()
     }
 
     // MARK: Open / close
@@ -293,6 +352,11 @@ final class NotchViewModel {
     func open(tab: NotchTab? = nil) {
         openTask?.cancel(); openTask = nil
         closeTask?.cancel(); closeTask = nil
+        if tabResetTask != nil {
+            // The close was still animating, so finish its reset before showing the tab.
+            tabResetTask?.cancel(); tabResetTask = nil
+            self.tab = .home
+        }
         if let tab { self.tab = tab }
         guard state != .open else { return }
         withAnimation(spring) { state = .open; hoverBump = false }
@@ -306,9 +370,37 @@ final class NotchViewModel {
         withAnimation(spring) { state = .closed }
         isScrubbing = false
         Haptics.play(.levelChange)
+        scheduleTabReset()
     }
 
     func toggle() { state == .open ? close() : open() }
+
+    /// Shows `newTab` in the open island.
+    func switchTab(to newTab: NotchTab) {
+        guard newTab != tab else { return }
+        guard newTab != .shelf || prefs.shelfEnabled else { return }
+        withAnimation(spring) { tab = newTab }
+        Haptics.play(.generic)
+    }
+
+    /// Moves to the shelf (forward) or back home.
+    func switchTab(forward: Bool) {
+        switchTab(to: forward ? .shelf : .home)
+    }
+
+    /// The island always reopens on Home. The tab flips only after the close animation, so the
+    /// shelf never changes into Home while it is still visible.
+    private func scheduleTabReset() {
+        tabResetTask?.cancel()
+        let delay = springDuration + 0.05
+        tabResetTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.tabResetTask = nil
+            guard self.state == .closed else { return }
+            self.tab = .home
+        }
+    }
 
     private func scheduleOpen() {
         guard openTask == nil, state == .closed, prefs.expandOnHover else { return }
@@ -373,11 +465,15 @@ final class NotchViewModel {
             close()
         }
 
-        if state == .open, tab == .home, nowPlaying != nil, abs(horizontalScroll) > 70 {
-            let forward = horizontalScroll < 0
-            horizontalScroll = 0
+        guard state == .open, abs(horizontalScroll) > 70 else { return }
+        let forward = horizontalScroll < 0
+        horizontalScroll = 0
+        if tab == .home, nowPlaying != nil {
             forward ? media.next() : media.previous()
             Haptics.play(.generic)
+        } else {
+            // Nothing to skip, so the swipe moves between Home and the shelf.
+            switchTab(forward: forward)
         }
     }
 
@@ -392,26 +488,75 @@ final class NotchViewModel {
 
     func dragSessionEnded() {
         isDropSession = false
+        if queuedTransient == .dropHint { queuedTransient = nil }
         if transient == .dropHint { clearTransient() }
         if !isHovering { scheduleClose(after: 0.6) }
     }
 
     // MARK: Transient activities
 
+    /// Shows a peek in the closed notch.
+    ///
+    /// A peek of the same family replaces the current one in place and restarts its timer, so a
+    /// held volume key keeps one HUD up. A peek of another family replaces a plain peek at once,
+    /// but waits in a single slot while a HUD is up, so the HUD is never cut short.
     func show(_ activity: TransientActivity) {
-        transientTask?.cancel()
-        withAnimation(spring) { transient = activity }
-        let duration = activity.duration
-        transientTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(duration))
-            guard !Task.isCancelled else { return }
-            self?.clearTransient()
+        if let current = transient {
+            if current.family == activity.family {
+                present(activity, lead: 0)
+                return
+            }
+            if current.isHUD {
+                queuedTransient = activity
+                // Let the HUD finish its minimum time, then hand over.
+                let earliest = transientVisibleFrom.addingTimeInterval(Self.minimumPeekVisible)
+                if earliest < transientDeadline { scheduleTransientEnd(at: earliest) }
+                return
+            }
         }
+        present(activity, lead: transient == nil ? springDuration : 0)
     }
 
     func clearTransient() {
         transientTask?.cancel(); transientTask = nil
+        queuedTransient = nil
         withAnimation(spring) { transient = nil }
+    }
+
+    /// Puts `activity` on screen and schedules its end. `lead` is the time the shape needs to animate in.
+    private func present(_ activity: TransientActivity, lead: TimeInterval) {
+        withAnimation(spring) { transient = activity }
+        transientVisibleFrom = Date().addingTimeInterval(lead)
+        transientDeadline = transientVisibleFrom.addingTimeInterval(max(activity.duration, Self.minimumPeekVisible))
+        scheduleTransientEnd(at: transientDeadline)
+    }
+
+    private func scheduleTransientEnd(at deadline: Date) {
+        transientTask?.cancel()
+        let delay = max(deadline.timeIntervalSinceNow, 0)
+        transientTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.transientTask = nil
+            self.transientEnded()
+        }
+    }
+
+    private func transientEnded() {
+        if let next = queuedTransient {
+            queuedTransient = nil
+            present(next, lead: 0)
+        } else {
+            withAnimation(spring) { transient = nil }
+        }
+    }
+
+    /// Applies a changed duration setting to the peek on screen.
+    private func rescheduleTransient() {
+        guard let transient, transientTask != nil else { return }
+        let from = max(transientVisibleFrom, Date())
+        transientDeadline = from.addingTimeInterval(max(transient.duration, Self.minimumPeekVisible))
+        scheduleTransientEnd(at: transientDeadline)
     }
 
     // MARK: Now playing
@@ -494,13 +639,11 @@ final class NotchViewModel {
         }
         let hash = data.hashValue
         if let cached = artworkTintCache, cached.0 == hash { tint = cached.1; return }
-        Task.detached(priority: .utility) { [weak self] in
-            let color = NSImage(data: data)?.dominantTint() ?? .white
-            await MainActor.run {
-                guard let self else { return }
-                self.artworkTintCache = (hash, color)
-                withAnimation(.easeInOut(duration: 0.5)) { self.tint = color }
-            }
+        Task { [weak self] in
+            let color = await Task.detached(priority: .utility) { NSImage(data: data)?.dominantTint() ?? .white }.value
+            guard let self, self.nowPlaying?.artworkData?.hashValue == hash else { return }
+            self.artworkTintCache = (hash, color)
+            withAnimation(.easeInOut(duration: 0.5)) { self.tint = color }
         }
     }
 
@@ -520,17 +663,49 @@ final class NotchViewModel {
         }
     }
 
+    // MARK: Preferences
+
+    /// Applies a changed setting right away, without a restart.
     func preferencesChanged(key: String) {
         switch key {
-        case "replaceSystemHUD": SystemHUDSuppressor.shared.setEnabled(prefs.replaceSystemHUD)
-        case "calendarEnabled": prefs.calendarEnabled ? calendar.start() : calendar.stop()
-        case "calendarExcluded", "calendarReminderMinutes": calendar.refresh()
-        case "waveformStyle": updateTint(for: nowPlaying)
-        case "nowPlayingEnabled", "hideWhileSourceActive", "nowPlayingIdleDuration": updateMusicActivity()
-        case "hideInFullscreen": isHidden = systemState.isFullscreen && prefs.hideInFullscreen; updateAudioTap()
-        case "liveWaveform": updateAudioTap()
-        case "siteIcons": resolveSource(for: nowPlaying)
-        default: break
+        case "soundHUDDuration", "displayHUDDuration", "batteryDuration", "connectivityDuration", "focusDuration":
+            rescheduleTransient()
+        case "replaceSystemHUD", "soundHUDEnabled", "displayHUDEnabled", "keyboardHUDEnabled":
+            updateHUDSuppression()
+        case "calendarEnabled":
+            prefs.calendarEnabled ? calendar.start() : calendar.stop()
+        case "calendarExcluded", "calendarReminderMinutes":
+            calendar.refresh()
+        case "hourlyChime":
+            calendar.rescheduleChime()
+        case "waveformStyle":
+            updateTint(for: nowPlaying)
+        case "liveWaveform":
+            updateAudioTap()
+        case "siteIcons":
+            resolveSource(for: nowPlaying)
+        case "nowPlayingEnabled", "hideWhileSourceActive", "nowPlayingIdleDuration":
+            updateMusicActivity()
+        case "hideInFullscreen":
+            applyFullscreen(systemState.isFullscreen)
+        case "notchHeightOffset", "notchWidthOffset":
+            // The sizes are computed from the setting. Only the hover test needs a fresh look.
+            mouseMoved(to: NSEvent.mouseLocation)
+        case "expandOnHover":
+            if prefs.expandOnHover {
+                if isHovering { scheduleOpen() }
+            } else {
+                openTask?.cancel(); openTask = nil
+            }
+        case "hoverDelay":
+            if openTask != nil {
+                openTask?.cancel(); openTask = nil
+                if isHovering { scheduleOpen() }
+            }
+        case "gesturesEnabled":
+            horizontalScroll = 0; verticalScroll = 0
+        default:
+            break
         }
     }
 }

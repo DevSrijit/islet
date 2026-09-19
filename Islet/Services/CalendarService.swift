@@ -21,6 +21,9 @@ struct CalendarInfo: Identifiable, Equatable {
 }
 
 /// Today's events from EventKit, plus a reminder that fires shortly before the next event starts.
+///
+/// EventKit queries can take a while with many calendars, so the fetch runs off the main actor
+/// and only the result lands on it.
 @MainActor
 @Observable
 final class CalendarService {
@@ -37,6 +40,7 @@ final class CalendarService {
     private var refreshTimer: Timer?
     private var reminderTask: Task<Void, Never>?
     private var chimeTask: Task<Void, Never>?
+    private var fetchTask: Task<Void, Never>?
     private var reminded: Set<String> = []
     private var running = false
 
@@ -61,6 +65,7 @@ final class CalendarService {
         refreshTimer?.invalidate(); refreshTimer = nil
         reminderTask?.cancel(); reminderTask = nil
         chimeTask?.cancel(); chimeTask = nil
+        fetchTask?.cancel(); fetchTask = nil
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
         events = []
@@ -77,38 +82,62 @@ final class CalendarService {
             authorized = false
         }
         denied = !authorized && status != .notDetermined
-        guard authorized, running else { return }
+        guard authorized, running, observer == nil else { return }
         observer = NotificationCenter.default.addObserver(forName: .EKEventStoreChanged, object: store, queue: .main) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+        refreshTimer?.tolerance = 30
         refresh()
         scheduleChime()
     }
 
+    /// Reloads calendars and today's events, then reschedules the reminder.
     func refresh() {
-        guard authorized else { return }
-        calendars = store.calendars(for: .event).map {
-            CalendarInfo(id: $0.calendarIdentifier, title: $0.title, color: $0.color ?? .systemBlue, source: $0.source.title)
+        guard authorized, running else { return }
+        let excluded = Set(Preferences.shared.calendarExcluded)
+        let store = self.store
+        fetchTask?.cancel()
+        fetchTask = Task { [weak self] in
+            let result = await Task.detached(priority: .utility) { Self.fetch(store: store, excluded: excluded) }.value
+            guard !Task.isCancelled, let self else { return }
+            self.calendars = result.calendars
+            self.events = result.events
+            self.reminded = self.reminded.intersection(result.events.map(\.id))
+            self.scheduleReminder()
+        }
+    }
+
+    /// Restarts the hourly chime loop, for example after the setting changed.
+    func rescheduleChime() {
+        guard authorized, running else { return }
+        scheduleChime()
+    }
+
+    nonisolated private static func fetch(store: EKEventStore, excluded: Set<String>) -> (calendars: [CalendarInfo], events: [CalendarEvent]) {
+        let all = store.calendars(for: .event)
+        let calendars = all.map {
+            CalendarInfo(id: $0.calendarIdentifier, title: $0.title, color: $0.color ?? .systemBlue, source: $0.source?.title ?? "")
         }.sorted { $0.title < $1.title }
 
-        let excluded = Set(Preferences.shared.calendarExcluded)
-        let included = store.calendars(for: .event).filter { !excluded.contains($0.calendarIdentifier) }
+        let included = all.filter { !excluded.contains($0.calendarIdentifier) }
+        guard !included.isEmpty else { return (calendars, []) }
         let start = Calendar.current.startOfDay(for: Date())
-        let end = Calendar.current.date(byAdding: .day, value: 1, to: start)!
+        let end = Calendar.current.date(byAdding: .day, value: 1, to: start) ?? start.addingTimeInterval(86_400)
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: included)
-        events = store.events(matching: predicate)
-            .filter { $0.status != .canceled }
+        let events = store.events(matching: predicate)
+            .filter { $0.status != .canceled && $0.startDate != nil && $0.endDate != nil }
             .sorted { ($0.isAllDay ? 0 : 1, $0.startDate) < ($1.isAllDay ? 0 : 1, $1.startDate) }
             .map {
-                CalendarEvent(id: $0.eventIdentifier ?? UUID().uuidString, title: $0.title ?? "Untitled",
+                CalendarEvent(id: $0.eventIdentifier ?? "\($0.title ?? "")|\($0.startDate.timeIntervalSince1970)",
+                              title: $0.title ?? "Untitled",
                               start: $0.startDate, end: $0.endDate, isAllDay: $0.isAllDay,
-                              color: $0.calendar.color ?? .systemBlue, calendarID: $0.calendar.calendarIdentifier,
+                              color: $0.calendar?.color ?? .systemBlue, calendarID: $0.calendar?.calendarIdentifier ?? "",
                               location: $0.location)
             }
-        scheduleReminder()
+        return (calendars, events)
     }
 
     private func scheduleReminder() {
@@ -135,7 +164,7 @@ final class CalendarService {
             while !Task.isCancelled {
                 let now = Date()
                 let nextHour = Calendar.current.nextDate(after: now, matching: DateComponents(minute: 0, second: 0), matchingPolicy: .nextTime) ?? now.addingTimeInterval(3600)
-                try? await Task.sleep(for: .seconds(nextHour.timeIntervalSince(now)))
+                try? await Task.sleep(for: .seconds(max(nextHour.timeIntervalSince(now), 1)))
                 guard !Task.isCancelled else { return }
                 if Preferences.shared.hourlyChime { self?.onHour?() }
             }

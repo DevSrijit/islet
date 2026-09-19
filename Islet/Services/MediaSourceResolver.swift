@@ -7,6 +7,9 @@ import Foundation
 /// macOS only tells us the browser and the media title. We ask the browser (through AppleScript,
 /// which prompts once for Automation access) for its open tabs, match the tab title, and fetch that
 /// site's favicon at runtime. Icons are cached on disk, and nothing brand-specific ships in the app.
+///
+/// Every lookup runs on a background queue. Results, including misses, are cached per title so a
+/// track that keeps reporting the same title never runs the AppleScript twice.
 final class MediaSourceResolver {
     struct Source: Equatable {
         let host: String
@@ -26,13 +29,21 @@ final class MediaSourceResolver {
         "com.operasoftware.Opera": ("Opera", "title"),
     ]
 
+    /// How long a miss (no matching tab) stays cached before the browser is asked again.
+    static let missLifetime: TimeInterval = 120
+    /// How long a failed favicon download stays cached.
+    static let faviconMissLifetime: TimeInterval = 600
+    private static let maxCachedResults = 64
+
     private let queue = DispatchQueue(label: "com.devsrijit.islet.source", qos: .utility)
+    // Everything below is touched on `queue` only.
     private var memory: [String: NSImage] = [:]
-    private var lastKey: String?
-    private var lastResult: Source?
+    private var faviconMisses: [String: Date] = [:]
+    private var results: [String: (source: Source?, at: Date)] = [:]
+    private var resultOrder: [String] = []
 
     private var cacheFolder: URL {
-        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
         let folder = base.appendingPathComponent("com.devsrijit.Islet/favicons", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder
@@ -43,20 +54,28 @@ final class MediaSourceResolver {
     /// Resolves on a background queue and calls back on the main thread.
     func resolve(bundleID: String, title: String, completion: @escaping (Source?) -> Void) {
         guard let browser = Self.browsers[bundleID] else { completion(nil); return }
-        Log.debug("resolving source for \(bundleID) / \(title)")
         let key = "\(bundleID)|\(title)"
-        if key == lastKey { completion(lastResult); return }
         queue.async { [weak self] in
             guard let self else { return }
+            if let cached = self.results[key], cached.source != nil || Date().timeIntervalSince(cached.at) < Self.missLifetime {
+                DispatchQueue.main.async { completion(cached.source) }
+                return
+            }
             let host = self.matchingHost(browser: browser, title: title)
-            Log.debug("matched host: \(host ?? "none")")
             var source: Source?
             if let host {
                 source = Source(host: host, name: Self.displayName(for: host), icon: self.favicon(for: host))
             }
-            self.lastKey = key
-            self.lastResult = source
+            self.remember(key: key, source: source)
             DispatchQueue.main.async { completion(source) }
+        }
+    }
+
+    private func remember(key: String, source: Source?) {
+        if results[key] == nil { resultOrder.append(key) }
+        results[key] = (source, Date())
+        while resultOrder.count > Self.maxCachedResults {
+            results.removeValue(forKey: resultOrder.removeFirst())
         }
     }
 
@@ -79,7 +98,6 @@ final class MediaSourceResolver {
         return out
         """
         guard let output = Self.runAppleScript(script) else { return nil }
-        Log.debug("tab list: \(output.count) chars, \(output.split(separator: "\n").count) lines")
         let needle = title.lowercased()
         var fallback: String?
         for line in output.split(separator: "\n") {
@@ -97,21 +115,28 @@ final class MediaSourceResolver {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-"]
-        let input = Pipe(), output = Pipe(), errors = Pipe()
+        let input = Pipe(), output = Pipe()
         process.standardInput = input
         process.standardOutput = output
-        process.standardError = errors
+        process.standardError = FileHandle.nullDevice
         do { try process.run() } catch { Log.debug("osascript failed to start: \(error)"); return nil }
-        input.fileHandleForWriting.write(source.data(using: .utf8)!)
+        input.fileHandleForWriting.write(source.data(using: .utf8) ?? Data())
         try? input.fileHandleForWriting.close()
-        let deadline = DispatchTime.now() + 4
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global(qos: .utility).async { process.waitUntilExit(); group.leave() }
-        if group.wait(timeout: deadline) == .timedOut { process.terminate(); Log.debug("tab lookup timed out"); return nil }
-        let errorText = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        if !errorText.isEmpty { Log.debug("tab lookup: \(errorText.trimmingCharacters(in: .whitespacesAndNewlines))") }
-        return String(data: output.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+        // Read before waiting, else a long tab list fills the pipe and the script never exits.
+        var data = Data()
+        let reader = DispatchGroup()
+        reader.enter()
+        DispatchQueue.global(qos: .utility).async {
+            data = output.fileHandleForReading.readDataToEndOfFile()
+            reader.leave()
+        }
+        if reader.wait(timeout: .now() + 4) == .timedOut {
+            process.terminate()
+            Log.debug("tab lookup timed out")
+            return nil
+        }
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)
     }
 
     private static let knownMediaHosts = ["youtube.com", "netflix.com", "music.youtube.com", "open.spotify.com", "music.apple.com",
@@ -140,6 +165,7 @@ final class MediaSourceResolver {
 
     private func favicon(for host: String) -> NSImage? {
         if let cached = memory[host] { return cached }
+        if let missedAt = faviconMisses[host], Date().timeIntervalSince(missedAt) < Self.faviconMissLifetime { return nil }
         let file = cacheFolder.appendingPathComponent(host + ".png")
         if let image = NSImage(contentsOf: file) { memory[host] = image; return image }
         let candidates = [
@@ -147,21 +173,37 @@ final class MediaSourceResolver {
             "https://www.google.com/s2/favicons?domain=\(host)&sz=128",
         ]
         for candidate in candidates {
-            guard let url = URL(string: candidate), let data = try? Data(contentsOf: url), data.count > 200,
+            guard let url = URL(string: candidate), let data = Self.download(url), data.count > 200,
                   let image = NSImage(data: data), image.size.width >= 16 else { continue }
             memory[host] = image
+            faviconMisses.removeValue(forKey: host)
             if let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
                 try? png.write(to: file)
             }
             return image
         }
+        faviconMisses[host] = Date()
         return nil
+    }
+
+    /// Fetches with a short timeout. Runs on the resolver queue, never on the main thread.
+    private static func download(_ url: URL) -> Data? {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var result: Data?
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) { result = data }
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        return result
     }
 }
 
-/// Minimal logger that writes to stderr, which is easy to capture when running the binary directly.
+/// Minimal logger for errors. It writes to stderr, which is easy to capture when running the binary directly.
 enum Log {
     static func debug(_ message: String) {
-        FileHandle.standardError.write(("Islet: " + message + "\n").data(using: .utf8)!)
+        FileHandle.standardError.write(("Islet: " + message + "\n").data(using: .utf8) ?? Data())
     }
 }
