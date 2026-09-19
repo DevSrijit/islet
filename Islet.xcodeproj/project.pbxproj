@@ -15,6 +15,7 @@
 		1401BFAF33C1257B67F4173A /* ShelfView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F9787FCBAAC52C49B77D14D /* ShelfView.swift */; };
 		1A0841C3791333EC3A03A615 /* NowPlayingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B45D269ABAF165DCD47C1B3 /* NowPlayingService.swift */; };
 		236F120159F230B3F2BD6C0E /* Visualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36A0A67250F672C2F6579551 /* Visualizer.swift */; };
+		26A5D6144FAE09178665708F /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82D9C6BBFEBD0F8EAB9065C5 /* SettingsWindowController.swift */; };
 		2D3573AA5CDB0FD6FDEA2E63 /* SoundPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBC71BF8494CA4EA6F6F4B06 /* SoundPlayer.swift */; };
 		3509603D4838C9A0B8EE8201 /* MarqueeText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AF683A37B3FD0D186151273 /* MarqueeText.swift */; };
 		3969F457A0A052EFA5BBEEE9 /* HotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34E96F6750E641B9297E0773 /* HotKey.swift */; };
@@ -93,6 +94,7 @@
 		68B453247AD5778C67D937CC /* Scrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scrubber.swift; sourceTree = "<group>"; };
 		6A54973FE97009232F185090 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		6BBCF676E1144DAAC40FE599 /* FlipArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlipArtwork.swift; sourceTree = "<group>"; };
+		82D9C6BBFEBD0F8EAB9065C5 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		8B8EDB6EACA3E3BBAA93F82C /* NotchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchViewModel.swift; sourceTree = "<group>"; };
 		8D147DCB02D48D3892724204 /* NotchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchRootView.swift; sourceTree = "<group>"; };
 		92E02D7328D6490B7107BCE0 /* BrightnessService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrightnessService.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 				35F278958F31EB4861F75FF2 /* AppDelegate.swift */,
 				37CB284F04F2E96BEDEBAB29 /* Intents.swift */,
 				55B8872C951B9593B5EA0E6C /* IsletApp.swift */,
+				82D9C6BBFEBD0F8EAB9065C5 /* SettingsWindowController.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -366,6 +369,7 @@
 				CE3C7079B6802F728EB5815A /* Preferences.swift in Sources */,
 				CE26F1C62A9CB251947F5717 /* Scrubber.swift in Sources */,
 				FE4C4D542400F3E829913B27 /* SettingsView.swift in Sources */,
+				26A5D6144FAE09178665708F /* SettingsWindowController.swift in Sources */,
 				65C9106C462D48AB13131253 /* ShelfStore.swift in Sources */,
 				1401BFAF33C1257B67F4173A /* ShelfView.swift in Sources */,
 				2D3573AA5CDB0FD6FDEA2E63 /* SoundPlayer.swift in Sources */,

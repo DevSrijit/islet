@@ -99,7 +99,7 @@ def main():
             continue
         name, kind, default = entry
         props.append(f'    var {name}: {kind} {{ didSet {{ store({name}, "{name}") }} }}')
-        defaults.append(f'            "{name}": {default},')
+        defaults.append(f'        "{name}": {default},')
         if kind == "String":
             inits.append(f'        {name} = defaults.string(forKey: "{name}") ?? {default}')
         elif kind == "[String]":
@@ -135,10 +135,28 @@ final class Preferences {{
         }}
     }}
 
-    private init() {{
-        defaults.register(defaults: [
+    private static let defaultValues: [String: Any] = [
 {nl.join(defaults)}
-        ])
+    ]
+
+    private init() {{
+        defaults.register(defaults: Self.defaultValues)
+{nl.join(inits)}
+    }}
+
+    /// Clears every stored setting and reloads the defaults.
+    /// Each property assignment posts `changedNotification`, so observers react as if the user changed the value.
+    /// Launch at login is left as it is, because the system owns it.
+    func resetToDefaults() {{
+        if let domain = Bundle.main.bundleIdentifier {{
+            defaults.removePersistentDomain(forName: domain)
+        }}
+        defaults.register(defaults: Self.defaultValues)
+        reload()
+    }}
+
+    /// Reads every property from `UserDefaults` again. Same lines as `init`, but here `didSet` runs.
+    private func reload() {{
 {nl.join(inits)}
     }}
 

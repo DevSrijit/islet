@@ -105,78 +105,164 @@ final class Preferences {
         }
     }
 
+    private static let defaultValues: [String: Any] = [
+        "hideInFullscreen": true,
+        "hideFromScreenCapture": false,
+        "simulatedNotch": false,
+        "displayTarget": "auto",
+        "notchHeightOffset": 1.0,
+        "notchWidthOffset": 0.0,
+        "contrastOutline": false,
+        "progressiveBlur": true,
+        "hapticFeedback": true,
+        "expandOnHover": true,
+        "hoverDelay": 0.12,
+        "gesturesEnabled": true,
+        "globalHotkey": true,
+        "animationSpeed": "fast",
+        "batteryEnabled": true,
+        "batteryDuration": 3.0,
+        "batteryLowPowerMode": true,
+        "batteryWarnLow": true,
+        "batteryLowThreshold": 20,
+        "batterySound": true,
+        "batteryHideLabel": false,
+        "batteryHidePercentage": false,
+        "connectivityEnabled": true,
+        "connectivityDuration": 3.0,
+        "connectivityWarnLow": true,
+        "connectivityLowThreshold": 20,
+        "connectivitySound": false,
+        "focusEnabled": true,
+        "focusDuration": 3.0,
+        "focusSound": false,
+        "focusHideLabel": false,
+        "displayHUDEnabled": true,
+        "displayHUDDuration": 1.5,
+        "displayHUDStyle": "glow",
+        "displayHUDPercentage": true,
+        "displayHUDHideLabel": false,
+        "keyboardHUDEnabled": true,
+        "soundHUDEnabled": true,
+        "soundHUDDuration": 1.5,
+        "soundHUDStyle": "accent",
+        "soundHUDPercentage": true,
+        "soundHUDHideLabel": false,
+        "soundHUDShowDevice": true,
+        "replaceSystemHUD": false,
+        "nowPlayingEnabled": true,
+        "nowPlayingIdleDuration": 3.0,
+        "nowPlayingSneakPeek": true,
+        "waveformStyle": "colored",
+        "liveWaveform": false,
+        "compactWaveform": true,
+        "artworkFlip": true,
+        "siteIcons": true,
+        "hideWhileSourceActive": false,
+        "hideTitleExtras": false,
+        "actionShuffle": true,
+        "actionRepeat": true,
+        "actionCopy": true,
+        "calendarEnabled": true,
+        "calendarReminderMinutes": 15,
+        "calendarSound": true,
+        "hourlyChime": false,
+        "calendarUseColor": true,
+        "calendarExcluded": [],
+        "shelfEnabled": true,
+        "lockSoundOnLock": false,
+        "lockSoundOnUnlock": true,
+        "downloadsActivity": true,
+        "capsLockActivity": true,
+        "hasCompletedOnboarding": false,
+    ]
+
     private init() {
-        defaults.register(defaults: [
-            "hideInFullscreen": true,
-            "hideFromScreenCapture": false,
-            "simulatedNotch": false,
-            "displayTarget": "auto",
-            "notchHeightOffset": 1.0,
-            "notchWidthOffset": 0.0,
-            "contrastOutline": false,
-            "progressiveBlur": true,
-            "hapticFeedback": true,
-            "expandOnHover": true,
-            "hoverDelay": 0.12,
-            "gesturesEnabled": true,
-            "globalHotkey": true,
-            "animationSpeed": "fast",
-            "batteryEnabled": true,
-            "batteryDuration": 3.0,
-            "batteryLowPowerMode": true,
-            "batteryWarnLow": true,
-            "batteryLowThreshold": 20,
-            "batterySound": true,
-            "batteryHideLabel": false,
-            "batteryHidePercentage": false,
-            "connectivityEnabled": true,
-            "connectivityDuration": 3.0,
-            "connectivityWarnLow": true,
-            "connectivityLowThreshold": 20,
-            "connectivitySound": false,
-            "focusEnabled": true,
-            "focusDuration": 3.0,
-            "focusSound": false,
-            "focusHideLabel": false,
-            "displayHUDEnabled": true,
-            "displayHUDDuration": 1.5,
-            "displayHUDStyle": "glow",
-            "displayHUDPercentage": true,
-            "displayHUDHideLabel": false,
-            "keyboardHUDEnabled": true,
-            "soundHUDEnabled": true,
-            "soundHUDDuration": 1.5,
-            "soundHUDStyle": "accent",
-            "soundHUDPercentage": true,
-            "soundHUDHideLabel": false,
-            "soundHUDShowDevice": true,
-            "replaceSystemHUD": false,
-            "nowPlayingEnabled": true,
-            "nowPlayingIdleDuration": 3.0,
-            "nowPlayingSneakPeek": true,
-            "waveformStyle": "colored",
-            "liveWaveform": false,
-            "compactWaveform": true,
-            "artworkFlip": true,
-            "siteIcons": true,
-            "hideWhileSourceActive": false,
-            "hideTitleExtras": false,
-            "actionShuffle": true,
-            "actionRepeat": true,
-            "actionCopy": true,
-            "calendarEnabled": true,
-            "calendarReminderMinutes": 15,
-            "calendarSound": true,
-            "hourlyChime": false,
-            "calendarUseColor": true,
-            "calendarExcluded": [],
-            "shelfEnabled": true,
-            "lockSoundOnLock": false,
-            "lockSoundOnUnlock": true,
-            "downloadsActivity": true,
-            "capsLockActivity": true,
-            "hasCompletedOnboarding": false,
-        ])
+        defaults.register(defaults: Self.defaultValues)
+        hideInFullscreen = defaults.bool(forKey: "hideInFullscreen")
+        hideFromScreenCapture = defaults.bool(forKey: "hideFromScreenCapture")
+        simulatedNotch = defaults.bool(forKey: "simulatedNotch")
+        displayTarget = defaults.string(forKey: "displayTarget") ?? "auto"
+        notchHeightOffset = defaults.double(forKey: "notchHeightOffset")
+        notchWidthOffset = defaults.double(forKey: "notchWidthOffset")
+        contrastOutline = defaults.bool(forKey: "contrastOutline")
+        progressiveBlur = defaults.bool(forKey: "progressiveBlur")
+        hapticFeedback = defaults.bool(forKey: "hapticFeedback")
+        expandOnHover = defaults.bool(forKey: "expandOnHover")
+        hoverDelay = defaults.double(forKey: "hoverDelay")
+        gesturesEnabled = defaults.bool(forKey: "gesturesEnabled")
+        globalHotkey = defaults.bool(forKey: "globalHotkey")
+        animationSpeed = defaults.string(forKey: "animationSpeed") ?? "fast"
+        batteryEnabled = defaults.bool(forKey: "batteryEnabled")
+        batteryDuration = defaults.double(forKey: "batteryDuration")
+        batteryLowPowerMode = defaults.bool(forKey: "batteryLowPowerMode")
+        batteryWarnLow = defaults.bool(forKey: "batteryWarnLow")
+        batteryLowThreshold = defaults.integer(forKey: "batteryLowThreshold")
+        batterySound = defaults.bool(forKey: "batterySound")
+        batteryHideLabel = defaults.bool(forKey: "batteryHideLabel")
+        batteryHidePercentage = defaults.bool(forKey: "batteryHidePercentage")
+        connectivityEnabled = defaults.bool(forKey: "connectivityEnabled")
+        connectivityDuration = defaults.double(forKey: "connectivityDuration")
+        connectivityWarnLow = defaults.bool(forKey: "connectivityWarnLow")
+        connectivityLowThreshold = defaults.integer(forKey: "connectivityLowThreshold")
+        connectivitySound = defaults.bool(forKey: "connectivitySound")
+        focusEnabled = defaults.bool(forKey: "focusEnabled")
+        focusDuration = defaults.double(forKey: "focusDuration")
+        focusSound = defaults.bool(forKey: "focusSound")
+        focusHideLabel = defaults.bool(forKey: "focusHideLabel")
+        displayHUDEnabled = defaults.bool(forKey: "displayHUDEnabled")
+        displayHUDDuration = defaults.double(forKey: "displayHUDDuration")
+        displayHUDStyle = defaults.string(forKey: "displayHUDStyle") ?? "glow"
+        displayHUDPercentage = defaults.bool(forKey: "displayHUDPercentage")
+        displayHUDHideLabel = defaults.bool(forKey: "displayHUDHideLabel")
+        keyboardHUDEnabled = defaults.bool(forKey: "keyboardHUDEnabled")
+        soundHUDEnabled = defaults.bool(forKey: "soundHUDEnabled")
+        soundHUDDuration = defaults.double(forKey: "soundHUDDuration")
+        soundHUDStyle = defaults.string(forKey: "soundHUDStyle") ?? "accent"
+        soundHUDPercentage = defaults.bool(forKey: "soundHUDPercentage")
+        soundHUDHideLabel = defaults.bool(forKey: "soundHUDHideLabel")
+        soundHUDShowDevice = defaults.bool(forKey: "soundHUDShowDevice")
+        replaceSystemHUD = defaults.bool(forKey: "replaceSystemHUD")
+        nowPlayingEnabled = defaults.bool(forKey: "nowPlayingEnabled")
+        nowPlayingIdleDuration = defaults.double(forKey: "nowPlayingIdleDuration")
+        nowPlayingSneakPeek = defaults.bool(forKey: "nowPlayingSneakPeek")
+        waveformStyle = defaults.string(forKey: "waveformStyle") ?? "colored"
+        liveWaveform = defaults.bool(forKey: "liveWaveform")
+        compactWaveform = defaults.bool(forKey: "compactWaveform")
+        artworkFlip = defaults.bool(forKey: "artworkFlip")
+        siteIcons = defaults.bool(forKey: "siteIcons")
+        hideWhileSourceActive = defaults.bool(forKey: "hideWhileSourceActive")
+        hideTitleExtras = defaults.bool(forKey: "hideTitleExtras")
+        actionShuffle = defaults.bool(forKey: "actionShuffle")
+        actionRepeat = defaults.bool(forKey: "actionRepeat")
+        actionCopy = defaults.bool(forKey: "actionCopy")
+        calendarEnabled = defaults.bool(forKey: "calendarEnabled")
+        calendarReminderMinutes = defaults.integer(forKey: "calendarReminderMinutes")
+        calendarSound = defaults.bool(forKey: "calendarSound")
+        hourlyChime = defaults.bool(forKey: "hourlyChime")
+        calendarUseColor = defaults.bool(forKey: "calendarUseColor")
+        calendarExcluded = defaults.stringArray(forKey: "calendarExcluded") ?? []
+        shelfEnabled = defaults.bool(forKey: "shelfEnabled")
+        lockSoundOnLock = defaults.bool(forKey: "lockSoundOnLock")
+        lockSoundOnUnlock = defaults.bool(forKey: "lockSoundOnUnlock")
+        downloadsActivity = defaults.bool(forKey: "downloadsActivity")
+        capsLockActivity = defaults.bool(forKey: "capsLockActivity")
+        hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
+    }
+
+    /// Clears every stored setting and reloads the defaults.
+    /// Each property assignment posts `changedNotification`, so observers react as if the user changed the value.
+    /// Launch at login is left as it is, because the system owns it.
+    func resetToDefaults() {
+        if let domain = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: domain)
+        }
+        defaults.register(defaults: Self.defaultValues)
+        reload()
+    }
+
+    /// Reads every property from `UserDefaults` again. Same lines as `init`, but here `didSet` runs.
+    private func reload() {
         hideInFullscreen = defaults.bool(forKey: "hideInFullscreen")
         hideFromScreenCapture = defaults.bool(forKey: "hideFromScreenCapture")
         simulatedNotch = defaults.bool(forKey: "simulatedNotch")

@@ -47,8 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        SettingsWindowController.shared.show()
     }
 
     // MARK: Panel
