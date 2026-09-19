@@ -64,7 +64,9 @@ struct HomeView: View {
                          onSeek: { model.media.seek(to: $0) })
             }
         } else {
-            Text(model.source?.name ?? NSImage.appName(bundleID: playing.appBundleID) ?? "Live")
+            // A stream with no timeline gets one quiet line, unless it would only repeat the title.
+            let source = model.source?.name ?? NSImage.appName(bundleID: playing.appBundleID)
+            Text(source.map { $0.caseInsensitiveCompare(playing.title) == .orderedSame ? "" : $0 } ?? "Live")
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.45))
                 .lineLimit(1)
