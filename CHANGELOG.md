@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- System HUDs are hidden on macOS 26 and later too. Those slider popovers come from `MenuBarAgent`, not `OSDUIHelper`, and Islet now freezes both while it runs.
+- The progressive blur is a strip below the island that fades downward, like Alcove's, instead of a halo.
+- Shelf and Settings icons live in the black band beside the notch while the island is open.
+- Tab changes and open/close transitions move vertically only.
+- Media that blinks to "nothing playing" for a moment no longer flickers the compact activity; the last state is held for the idle duration.
+- A watchdog closes the island when the pointer has clearly left it, even if a mouse event was missed.
+- Full screen detection has hysteresis, and "Hide in full screen apps" is off by default so the island stays up over full screen video.
+- The menu bar item uses a notch glyph and shows that Islet is running.
+- HUD peeks stay quiet during the first seconds after launch.
+
 ## 0.2.0
 
 - Settings now open in a real window with pages for every feature, permission status, and a reset button.

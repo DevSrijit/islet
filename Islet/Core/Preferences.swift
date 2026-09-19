@@ -106,7 +106,7 @@ final class Preferences {
     }
 
     private static let defaultValues: [String: Any] = [
-        "hideInFullscreen": true,
+        "hideInFullscreen": false,
         "hideFromScreenCapture": false,
         "simulatedNotch": false,
         "displayTarget": "auto",
@@ -151,7 +151,7 @@ final class Preferences {
         "soundHUDShowDevice": true,
         "replaceSystemHUD": true,
         "nowPlayingEnabled": true,
-        "nowPlayingIdleDuration": 3.0,
+        "nowPlayingIdleDuration": 5.0,
         "nowPlayingSneakPeek": true,
         "waveformStyle": "colored",
         "liveWaveform": false,

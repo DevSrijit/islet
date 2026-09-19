@@ -20,14 +20,9 @@ struct NotchRootView: View {
         ZStack(alignment: .top) {
             Color.clear
             if open, prefs.progressiveBlur {
-                BlurBackdrop(fade: NotchViewModel.haloFade,
-                             cornerRadius: Self.openBottomRadius,
-                             edgeInset: Self.openTopRadius,
-                             topInset: model.notchSize.height)
-                    .frame(width: model.openSize.width + 2 * NotchViewModel.haloFade,
-                           height: model.openSize.height + NotchViewModel.haloFade)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
+                blurStrip
+                    .padding(.top, model.openSize.height - 1)
+                    .transition(.opacity.animation(.easeOut(duration: 0.3)))
             }
             island
         }
@@ -37,6 +32,43 @@ struct NotchRootView: View {
         .animation(model.spring, value: open)
         .animation(.spring(duration: 0.3, bounce: 0.3), value: model.hoverBump)
         .preferredColorScheme(.dark)
+    }
+
+    /// Blurred, darkened strip below the island that fades out downward, like Alcove's.
+    private var blurStrip: some View {
+        let width = model.openSize.width - 2 * Self.openTopRadius
+        let height = NotchViewModel.blurStripHeight
+        return ZStack(alignment: .top) {
+            BlurBackdrop()
+                .frame(width: width, height: height)
+            LinearGradient(stops: [
+                .init(color: .black.opacity(0.62), location: 0),
+                .init(color: .black.opacity(0.28), location: 0.4),
+                .init(color: .clear, location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+            .frame(width: width, height: height)
+            .mask(LinearGradient(stops: [
+                .init(color: .clear, location: 0), .init(color: .black, location: 0.08),
+                .init(color: .black, location: 0.92), .init(color: .clear, location: 1),
+            ], startPoint: .leading, endPoint: .trailing))
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// Small controls in the black band beside the notch: shelf on the left, settings on the right.
+    private var bandControls: some View {
+        HStack {
+            if prefs.shelfEnabled {
+                BandButton(symbol: model.tab == .shelf ? "house.fill" : "tray.fill", active: model.tab == .shelf, help: model.tab == .shelf ? "Home" : "Shelf") {
+                    model.switchTab(to: model.tab == .shelf ? .home : .shelf)
+                    Haptics.play(.alignment)
+                }
+            }
+            Spacer(minLength: 0)
+            BandButton(symbol: "gearshape.fill", help: "Islet Settings") { AppDelegate.shared?.openSettings() }
+        }
+        .padding(.horizontal, Self.contentMargin)
+        .frame(width: model.openSize.width, height: model.notchSize.height)
     }
 
     private var island: some View {
@@ -54,6 +86,10 @@ struct NotchRootView: View {
                 .shadow(color: .black.opacity(open ? 0.28 : 0), radius: 18, y: 8)
             content
                 .clipShape(shape)
+            if open {
+                bandControls
+                    .transition(.opacity.animation(.easeOut(duration: 0.2).delay(0.1)))
+            }
         }
         .frame(width: size.width, height: size.height)
         .offset(x: open ? 0 : model.closedOffset)
@@ -80,13 +116,13 @@ struct NotchRootView: View {
                     switch model.tab {
                     case .home:
                         HomeView(model: model, namespace: namespace)
-                            .transition(.opacity.combined(with: .offset(x: -12)))
+                            .transition(.opacity)
                     case .shelf:
                         ShelfView(model: model)
-                            .transition(.opacity.combined(with: .offset(x: 12)))
+                            .transition(.opacity)
                     }
                 }
-                .animation(model.spring, value: model.tab)
+                .animation(.easeInOut(duration: 0.2), value: model.tab)
                 .padding(.horizontal, Self.contentMargin)
                 .padding(.top, 6)
                 .padding(.bottom, 12)
@@ -95,13 +131,38 @@ struct NotchRootView: View {
             // Content fades in once the shape has room, and fades out fast so nothing
             // lingers while the shape collapses upward.
             .transition(.asymmetric(
-                insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)).animation(.easeOut(duration: 0.22).delay(0.08)),
-                removal: .opacity.combined(with: .scale(scale: 0.94, anchor: .top)).animation(.easeIn(duration: 0.11))))
+                insertion: .opacity.combined(with: .offset(y: -6)).animation(.easeOut(duration: 0.22).delay(0.08)),
+                removal: .opacity.combined(with: .offset(y: -6)).animation(.easeIn(duration: 0.11))))
         } else {
             ClosedContentView(model: model, namespace: namespace)
                 .transition(.asymmetric(
                     insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.12)),
                     removal: .opacity.animation(.easeIn(duration: 0.08))))
         }
+    }
+}
+
+
+/// A quiet symbol button for the black band.
+private struct BandButton: View {
+    let symbol: String
+    var active = false
+    var help: String
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(hovering || active ? 0.95 : 0.42))
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(.white.opacity(hovering ? 0.12 : 0)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovering)
+        .help(help)
     }
 }

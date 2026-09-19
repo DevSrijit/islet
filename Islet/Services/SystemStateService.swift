@@ -23,6 +23,10 @@ final class SystemStateService {
     static let pollInterval: TimeInterval = 2
     /// A change must hold for this long before it is reported, so the island never flickers.
     static let debounce: TimeInterval = 0.4
+    /// Hiding waits a little; showing again waits longer, because the menu bar also reveals
+    /// briefly in full screen when the pointer touches the top edge.
+    static let hideDelay: TimeInterval = 1.0
+    static let showDelay: TimeInterval = 2.5
 
     private let queue = DispatchQueue(label: "com.devsrijit.islet.system-state", qos: .utility)
     private var observers: [Any] = []
@@ -137,7 +141,7 @@ final class SystemStateService {
             }
         }
         confirmation = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounce, execute: item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + (full ? Self.hideDelay : Self.showDelay), execute: item)
     }
 
     private func update(_ full: Bool) {

@@ -22,7 +22,7 @@ It is native Swift, has no analytics, no account, and no third-party Swift depen
 
 Islet needs macOS 14 Sonoma or later. The live waveform needs macOS 14.2.
 
-Islet lives in the menu bar. Hover the notch to open it, or press `⌃⌥I`.
+Islet lives in the menu bar. Click or hover the notch to open it, swipe down on it, or press `⌃⌥I`.
 
 ## What it does
 
@@ -42,7 +42,7 @@ Islet lives in the menu bar. Hover the notch to open it, or press `⌃⌥I`.
 
 **HUDs**
 - Volume, brightness, and keyboard backlight in the notch, in white, accent, glow, or decibel styles.
-- Optional: hide the system bezels so only Islet's HUDs show.
+- The system bezels and macOS 26 slider popovers are hidden while Islet runs, so only Islet's HUDs show. Turn this off under Sound.
 
 **Shelf**
 - Drag files onto the notch to park them. Drag them back out anywhere.

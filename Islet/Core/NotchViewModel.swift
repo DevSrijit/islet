@@ -81,6 +81,8 @@ final class NotchViewModel {
     static let openBodyHeight: CGFloat = 142
     /// How far the blur halo extends past the island before it fades out completely.
     static let haloFade: CGFloat = 128
+    /// Height of the progressive blur strip under the open island.
+    static let blurStripHeight: CGFloat = 150
     /// Extra panel room around the open island for the halo and the shadow.
     static let panelMargin = CGSize(width: 2 * haloFade + 24, height: haloFade + 48)
 
@@ -361,6 +363,7 @@ final class NotchViewModel {
         if let tab { self.tab = tab }
         guard state != .open else { return }
         withAnimation(spring) { state = .open; hoverBump = false }
+        startWatchdog()
         Haptics.play(.alignment)
     }
 
@@ -370,6 +373,9 @@ final class NotchViewModel {
         guard state != .closed else { return }
         withAnimation(spring) { state = .closed }
         isScrubbing = false
+        isDropTargeted = false
+        isDropSession = false
+        watchdog?.invalidate(); watchdog = nil
         Haptics.play(.levelChange)
         scheduleTabReset()
     }
@@ -501,7 +507,11 @@ final class NotchViewModel {
     /// A peek of the same family replaces the current one in place and restarts its timer, so a
     /// held volume key keeps one HUD up. A peek of another family replaces a plain peek at once,
     /// but waits in a single slot while a HUD is up, so the HUD is never cut short.
+    private let startedAt = Date()
+
     func show(_ activity: TransientActivity) {
+        // Services settle their initial state during the first seconds; that is not news.
+        if activity.isHUD, Date().timeIntervalSince(startedAt) < 3 { return }
         if let current = transient {
             if current.family == activity.family {
                 present(activity, lead: 0)
@@ -576,7 +586,49 @@ final class NotchViewModel {
         NSWorkspace.shared.openApplication(at: url, configuration: .init())
     }
 
+    private var dropTask: Task<Void, Never>?
+    private var watchdog: Timer?
+    private var outsideTicks = 0
+
+    /// Media payloads blink to nil for a moment on some players (browsers, buffering). Hold the last
+    /// snapshot for the idle duration so the notch does not flicker.
     private func apply(nowPlaying new: NowPlaying?) {
+        if new == nil, nowPlaying != nil {
+            guard dropTask == nil else { return }
+            let grace = max(prefs.nowPlayingIdleDuration, 2)
+            dropTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(grace))
+                guard !Task.isCancelled, let self else { return }
+                self.dropTask = nil
+                self.applyNow(nowPlaying: nil)
+            }
+            // Treat the blink as a pause so the visualizer settles.
+            if var held = nowPlaying, held.isPlaying { held.isPlaying = false; applyNow(nowPlaying: held) }
+            return
+        }
+        dropTask?.cancel(); dropTask = nil
+        applyNow(nowPlaying: new)
+    }
+
+    /// Closes the island if the pointer has clearly left it, even if a mouse event was missed.
+    private func startWatchdog() {
+        watchdog?.invalidate()
+        outsideTicks = 0
+        watchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.state == .open else { self?.watchdog?.invalidate(); return }
+                let inside = self.shapeScreenRect.insetBy(dx: -6, dy: -6).contains(NSEvent.mouseLocation)
+                if inside { self.outsideTicks = 0; return }
+                self.outsideTicks += 1
+                if self.outsideTicks >= 3, !self.isDropSession, !self.isScrubbing, !self.isDropTargeted {
+                    self.isHovering = false
+                    self.close()
+                }
+            }
+        }
+    }
+
+    private func applyNow(nowPlaying new: NowPlaying?) {
         var new = new
         if prefs.hideTitleExtras, var track = new { track.title = track.title.strippingTitleExtras(); new = track }
         let key = new.map { "\($0.bundleID)|\($0.title)|\($0.artist)" }

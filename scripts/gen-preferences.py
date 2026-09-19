@@ -7,7 +7,7 @@ import os
 
 SETTINGS = [
     ("// MARK: General",),
-    ("hideInFullscreen", "Bool", "true"),
+    ("hideInFullscreen", "Bool", "false"),
     ("hideFromScreenCapture", "Bool", "false"),
     ("simulatedNotch", "Bool", "false"),
     ("displayTarget", "String", '"auto"'),
@@ -58,7 +58,7 @@ SETTINGS = [
     ("replaceSystemHUD", "Bool", "true"),
     ("// MARK: Now Playing",),
     ("nowPlayingEnabled", "Bool", "true"),
-    ("nowPlayingIdleDuration", "Double", "3.0"),
+    ("nowPlayingIdleDuration", "Double", "5.0"),
     ("nowPlayingSneakPeek", "Bool", "true"),
     ("waveformStyle", "String", '"colored"'),
     ("liveWaveform", "Bool", "false"),

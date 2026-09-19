@@ -11,8 +11,13 @@ final class SystemHUDSuppressor {
     static let shared = SystemHUDSuppressor()
 
     static let checkInterval: TimeInterval = 20
-    private static let helperLabel = "com.apple.OSDUIHelper"
-    private static let helperName = "OSDUIHelper"
+    /// Processes that draw system HUDs. `OSDUIHelper` draws the classic bezels; `MenuBarAgent`
+    /// draws the slider popovers under the menu bar that macOS 26 introduced.
+    private struct Helper { let label: String; let name: String; let kickstart: Bool }
+    private static let helpers: [Helper] = [
+        Helper(label: "com.apple.OSDUIHelper", name: "OSDUIHelper", kickstart: true),
+        Helper(label: "com.apple.MenuBarAgent", name: "MenuBarAgent", kickstart: false),
+    ]
 
     private let queue = DispatchQueue(label: "com.devsrijit.islet.hud-suppressor", qos: .utility)
     private var enabled = false
@@ -51,38 +56,49 @@ final class SystemHUDSuppressor {
         guard enabled else { return }
         queue.async {
             guard self.enabled else { return }
-            if let pid = self.helperPID(), self.isStopped(pid) { return }
+            let allStopped = Self.helpers.allSatisfy { helper in
+                guard let pid = self.helperPID(helper) else { return !helper.kickstart }
+                return self.isStopped(pid)
+            }
+            if allStopped { return }
             self.suspend()
         }
     }
 
     /// Restarts the helper so it is in a clean state, then freezes it.
+    /// Freezes every HUD helper. Helpers that must exist are restarted first so they are in a clean state.
     private func suspend() {
-        if helperPID() == nil {
-            shell("/bin/launchctl", ["kickstart", "gui/\(getuid())/\(Self.helperLabel)"])
-        } else {
-            shell("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(Self.helperLabel)"])
+        for helper in Self.helpers {
+            if helper.kickstart {
+                let flags = helperPID(helper) == nil ? ["kickstart"] : ["kickstart", "-k"]
+                shell("/bin/launchctl", flags + ["gui/\(getuid())/\(helper.label)"])
+            }
+            var pid: pid_t?
+            for _ in 0..<10 {
+                if let found = helperPID(helper) { pid = found; break }
+                guard helper.kickstart else { break }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            guard let pid else { continue }
+            if isStopped(pid) { continue }
+            // Let a freshly started helper finish launching before it is frozen.
+            if helper.kickstart { Thread.sleep(forTimeInterval: 0.4) }
+            guard enabled else { return }
+            kill(pid, SIGSTOP)
         }
-        // The helper needs a moment to come up after the kickstart.
-        var pid: pid_t?
-        for _ in 0..<10 {
-            if let found = helperPID() { pid = found; break }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        guard let pid else { Log.debug("OSDUIHelper did not start, cannot hide the system bezels"); return }
-        // Let the helper finish launching before it is frozen, else it never draws again later.
-        Thread.sleep(forTimeInterval: 0.4)
-        guard enabled else { return }
-        kill(pid, SIGSTOP)
     }
 
     private func resume() {
-        if let pid = helperPID() { kill(pid, SIGCONT) }
-        shell("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(Self.helperLabel)"])
+        for helper in Self.helpers {
+            if let pid = helperPID(helper) { kill(pid, SIGCONT) }
+            if helper.kickstart {
+                shell("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(helper.label)"])
+            }
+        }
     }
 
-    private func helperPID() -> pid_t? {
-        let output = shell("/usr/bin/pgrep", ["-x", Self.helperName]).output
+    private func helperPID(_ helper: Helper) -> pid_t? {
+        let output = shell("/usr/bin/pgrep", ["-x", helper.name]).output
         return output.split(separator: "\n").compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }.first
     }
 
