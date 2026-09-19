@@ -24,12 +24,22 @@ struct NowPlaying: Equatable {
     /// The bundle that owns the media session. Browsers report a helper process, so prefer the parent.
     var appBundleID: String { parentBundleID ?? bundleID }
 
-    /// Best estimate of the playhead position right now.
+    /// True when the source reports both a length and a playhead, so a scrubber makes sense.
+    /// Live streams and some video sites report neither.
+    var hasTimeline: Bool {
+        guard let duration, duration.isFinite, duration > 0, let elapsed, elapsed.isFinite else { return false }
+        return true
+    }
+
+    /// Best estimate of the playhead position right now. Nil when the source reports no playhead.
+    /// The result never goes below zero or past the duration.
     func position(at now: Date = .now) -> TimeInterval? {
-        guard let elapsed else { return nil }
-        guard isPlaying, let timestamp else { return elapsed }
-        let position = elapsed + now.timeIntervalSince(timestamp) * playbackRate
-        if let duration { return min(max(position, 0), duration) }
+        guard let elapsed, elapsed.isFinite else { return nil }
+        var position = elapsed
+        if isPlaying, let timestamp, playbackRate.isFinite {
+            position += now.timeIntervalSince(timestamp) * playbackRate
+        }
+        if let duration, duration.isFinite, duration > 0 { position = min(position, duration) }
         return max(position, 0)
     }
 }
@@ -45,6 +55,7 @@ final class NowPlayingService {
     private var buffer = Data()
     private var state: [String: Any] = [:]
     private let queue = DispatchQueue(label: "com.devsrijit.islet.nowplaying")
+    private let commandQueue = DispatchQueue(label: "com.devsrijit.islet.nowplaying.commands", qos: .userInitiated)
     private var shouldRun = false
     private var artworkCache: (String, Data)?
 
@@ -78,34 +89,50 @@ final class NowPlayingService {
         run(arguments: ["seek", String(micros)])
     }
 
-    func setShuffle(on: Bool) { run(arguments: ["shuffle", on ? "3" : "1"]) }
+    /// Most players ignore an absolute shuffle mode but honour the MediaRemote toggle command.
+    /// The local state flips right away so the button reacts before the player reports back.
+    func setShuffle(on: Bool) {
+        send(6)
+        assume("shuffleMode", on ? 3 : 1)
+    }
 
-    /// Off -> all -> one -> off, the same order Music.app uses.
+    /// Off -> all -> one -> off, the order Music.app uses. Sends the MediaRemote toggle command.
     func cycleRepeat(from mode: Int) {
-        let next = mode <= 1 ? 3 : (mode == 3 ? 2 : 1)
-        run(arguments: ["repeat", String(next)])
+        send(7)
+        assume("repeatMode", mode <= 1 ? 3 : (mode == 3 ? 2 : 1))
+    }
+
+    /// Stores an expected value until the player reports the real one.
+    private func assume(_ key: String, _ value: Int) {
+        queue.async {
+            guard !self.state.isEmpty else { return }
+            self.state[key] = NSNumber(value: value)
+            self.publish()
+        }
     }
 
     private func send(_ command: Int) {
         run(arguments: ["send", String(command)])
     }
 
-    /// Runs a one-shot adapter command and forgets about it.
+    /// Runs a one-shot adapter command off the main thread and forgets about it.
     private func run(arguments: [String]) {
         guard let script = Self.scriptURL, let framework = Self.frameworkURL else { return }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
-        p.arguments = [script.path, framework.path] + arguments
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        try? p.run()
+        commandQueue.async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
+            p.arguments = [script.path, framework.path] + arguments
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            do { try p.run() } catch { Log.debug("adapter command \(arguments.joined(separator: " ")) failed: \(error)") }
+        }
     }
 
     // MARK: Streaming
 
     private func launch() {
         guard shouldRun, let script = Self.scriptURL, let framework = Self.frameworkURL else {
-            NSLog("Islet: MediaRemoteAdapter is missing from the bundle")
+            Log.debug("MediaRemoteAdapter is missing from the bundle")
             return
         }
         let p = Process()
@@ -132,7 +159,7 @@ final class NowPlayingService {
             try p.run()
             process = p
         } catch {
-            NSLog("Islet: could not start MediaRemoteAdapter: \(error)")
+            Log.debug("could not start MediaRemoteAdapter: \(error)")
         }
     }
 

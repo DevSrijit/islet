@@ -21,6 +21,7 @@
 		3969F457A0A052EFA5BBEEE9 /* HotKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34E96F6750E641B9297E0773 /* HotKey.swift */; };
 		44A295D998B5DBC852495931 /* CapsLockWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 153431EA3C1EF3B52156F7D8 /* CapsLockWatcher.swift */; };
 		48CE2620121D361CB564BF37 /* AudioDeviceInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A663C5603BD174605394601 /* AudioDeviceInfo.swift */; };
+		4B50DCC987C34763DD354C63 /* MediaKeyMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43F10DE91EC702D3E380447A /* MediaKeyMonitor.swift */; };
 		4CCEBC6DC77FB683ACDD08BA /* Intents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37CB284F04F2E96BEDEBAB29 /* Intents.swift */; };
 		564EF54608E32A1A67285AE3 /* NotchPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D2EBA08B91469AE3263DC30 /* NotchPanel.swift */; };
 		65C9106C462D48AB13131253 /* ShelfStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2470A271E57518FAE4CEB69 /* ShelfStore.swift */; };
@@ -84,6 +85,7 @@
 		3D2EBA08B91469AE3263DC30 /* NotchPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotchPanel.swift; sourceTree = "<group>"; };
 		3F9787FCBAAC52C49B77D14D /* ShelfView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShelfView.swift; sourceTree = "<group>"; };
 		4265CF9C0440DDD376848596 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		43F10DE91EC702D3E380447A /* MediaKeyMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaKeyMonitor.swift; sourceTree = "<group>"; };
 		459A43EFD3124BD6E1DB984E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		52EC118418559C8988FE9781 /* SystemHUDSuppressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemHUDSuppressor.swift; sourceTree = "<group>"; };
 		5534019FCD31BA7D57E5329E /* HoverButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HoverButton.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				23CF5D8327709F65A29A626F /* DownloadsWatcher.swift */,
 				A6BED489CE86A1CAC05E7C08 /* FocusService.swift */,
 				34E96F6750E641B9297E0773 /* HotKey.swift */,
+				43F10DE91EC702D3E380447A /* MediaKeyMonitor.swift */,
 				C5B3BA6176DF594B121F395F /* MediaSourceResolver.swift */,
 				1B45D269ABAF165DCD47C1B3 /* NowPlayingService.swift */,
 				D2470A271E57518FAE4CEB69 /* ShelfStore.swift */,
@@ -358,6 +361,7 @@
 				4CCEBC6DC77FB683ACDD08BA /* Intents.swift in Sources */,
 				13647CE33610AA5912560A85 /* IsletApp.swift in Sources */,
 				3509603D4838C9A0B8EE8201 /* MarqueeText.swift in Sources */,
+				4B50DCC987C34763DD354C63 /* MediaKeyMonitor.swift in Sources */,
 				7F0F917C3CAB170D2CBE8721 /* MediaSourceResolver.swift in Sources */,
 				B8D5935A44FA35C068BDFA82 /* NSImage+Tint.swift in Sources */,
 				B309EC3417368C2FF7CABBD1 /* NotchGeometry.swift in Sources */,

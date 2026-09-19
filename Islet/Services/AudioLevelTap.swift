@@ -8,6 +8,9 @@ import os
 /// A process tap mirrors the system mix at the driver level. It cannot change what the user hears,
 /// and the per-buffer work here is a handful of multiply-adds per sample. macOS asks for
 /// "System Audio Recording" permission the first time the tap starts.
+///
+/// `start()` and `stop()` are safe to call any number of times. A failed tap is logged once and
+/// not retried for a while, so a denied permission cannot spam the log or the system prompt.
 @MainActor
 @Observable
 final class AudioLevelTap {
@@ -16,12 +19,17 @@ final class AudioLevelTap {
     private(set) var isRunning = false
     private(set) var failed = false
 
+    /// How long to wait before trying again after the tap could not be created.
+    static let retryInterval: TimeInterval = 60
+
     @ObservationIgnored private var tapID = AudioObjectID(kAudioObjectUnknown)
     @ObservationIgnored private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     @ObservationIgnored private var procID: AudioDeviceIOProcID?
     @ObservationIgnored private let lock = OSAllocatedUnfairLock(initialState: [Float](repeating: 0, count: 4))
     @ObservationIgnored private var uiTimer: Timer?
     @ObservationIgnored private var filters = BandFilters()
+    @ObservationIgnored private var failedAt: Date?
+    @ObservationIgnored private var loggedFailure = false
 
     static var isSupported: Bool {
         if #available(macOS 14.2, *) { return true } else { return false }
@@ -29,17 +37,20 @@ final class AudioLevelTap {
 
     func start() {
         guard !isRunning, Self.isSupported else { return }
+        if let failedAt, Date().timeIntervalSince(failedAt) < Self.retryInterval { return }
         if #available(macOS 14.2, *) {
             do {
                 try createTap()
                 isRunning = true
                 failed = false
+                failedAt = nil
                 uiTimer = Timer.scheduledTimer(withTimeInterval: 1 / 30, repeats: true) { [weak self] _ in
                     Task { @MainActor in self?.publish() }
                 }
             } catch {
-                NSLog("Islet: audio tap failed: \(error)")
+                if !loggedFailure { Log.debug("audio tap failed: \(error)"); loggedFailure = true }
                 failed = true
+                failedAt = Date()
                 stop()
             }
         }
@@ -105,6 +116,12 @@ final class AudioLevelTap {
         var size = UInt32(MemoryLayout<AudioStreamBasicDescription>.size)
         var address = AudioObjectPropertyAddress(mSelector: kAudioTapPropertyFormat, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
         try check(AudioObjectGetPropertyData(tap, &address, 0, nil, &size, &format), "read format")
+        // The IO block reads the buffer as 32-bit float samples, so refuse any other layout.
+        guard format.mFormatID == kAudioFormatLinearPCM,
+              format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              format.mBitsPerChannel == 32 else {
+            throw NSError(domain: "Islet.AudioTap", code: -1, userInfo: [NSLocalizedDescriptionKey: "unexpected tap format"])
+        }
         filters.configure(sampleRate: format.mSampleRate > 0 ? format.mSampleRate : 48_000)
         let channels = Int(max(format.mChannelsPerFrame, 1))
         let lock = self.lock
@@ -115,6 +132,7 @@ final class AudioLevelTap {
             let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
             guard let buffer = buffers.first, let data = buffer.mData else { return }
             let count = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
+            guard count > 0 else { return }
             let samples = data.bindMemory(to: Float.self, capacity: count)
             let levels = filters.process(samples: samples, count: count, stride: channels)
             lock.withLock { $0 = levels }

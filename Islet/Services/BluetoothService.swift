@@ -15,30 +15,53 @@ struct BluetoothEvent: Equatable {
 final class BluetoothService: NSObject {
     var onEvent: ((BluetoothEvent) -> Void)?
     var onLowBattery: ((BluetoothEvent) -> Void)?
+
+    /// Registration replays every device that is already connected. Those are not news.
+    static let replayWindow: TimeInterval = 3
+    /// AirPods and some headsets open several links in a row. One report per device is enough.
+    static let duplicateWindow: TimeInterval = 5
+
     private var pollTimer: Timer?
     private var warned: Set<String> = []
     private var startedAt = Date()
+    private var lastReport: [String: (connected: Bool, at: Date)] = [:]
+    private var started = false
 
     func start() {
+        guard !started else { return }
+        started = true
         startedAt = Date()
         IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(connected(_:device:)))
         pollTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in self?.checkLowBattery() }
+        pollTimer?.tolerance = 10
     }
 
     @objc private func connected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         device.register(forDisconnectNotification: self, selector: #selector(disconnected(_:device:)))
-        // Registration replays every device that is already connected. Those are not news.
-        guard Date().timeIntervalSince(startedAt) > 3 else { return }
+        guard Date().timeIntervalSince(startedAt) > Self.replayWindow else { return }
+        let key = Self.key(for: device)
         // Battery values arrive a moment after the link comes up.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.onEvent?(Self.event(for: device, connected: true))
+            guard let self, device.isConnected() else { return }
+            self.report(Self.event(for: device, connected: true), key: key)
         }
     }
 
     @objc private func disconnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
         notification.unregister()
-        warned.remove(device.addressString ?? "")
-        onEvent?(Self.event(for: device, connected: false))
+        let key = Self.key(for: device)
+        warned.remove(key)
+        report(Self.event(for: device, connected: false), key: key)
+    }
+
+    /// Drops a repeat of the same report for the same device within the duplicate window.
+    private func report(_ event: BluetoothEvent, key: String) {
+        let now = Date()
+        if let last = lastReport[key], last.connected == event.connected, now.timeIntervalSince(last.at) < Self.duplicateWindow {
+            return
+        }
+        lastReport[key] = (event.connected, now)
+        onEvent?(event)
     }
 
     private func checkLowBattery() {
@@ -46,7 +69,7 @@ final class BluetoothService: NSObject {
         guard threshold > 0, let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
         for device in devices where device.isConnected() {
             let event = Self.event(for: device, connected: true)
-            let key = device.addressString ?? event.name
+            let key = Self.key(for: device)
             guard let level = event.battery else { continue }
             if level <= threshold, !warned.contains(key) {
                 warned.insert(key)
@@ -55,6 +78,10 @@ final class BluetoothService: NSObject {
                 warned.remove(key)
             }
         }
+    }
+
+    private static func key(for device: IOBluetoothDevice) -> String {
+        device.addressString ?? device.name ?? "unknown"
     }
 
     static func event(for device: IOBluetoothDevice, connected: Bool) -> BluetoothEvent {
