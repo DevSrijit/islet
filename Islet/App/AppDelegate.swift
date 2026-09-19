@@ -93,10 +93,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let panel = NotchPanel(contentRect: model.panelFrame)
             let hosting = NotchHostingView(rootView: NotchRootView(model: model))
             hosting.frame = NSRect(origin: .zero, size: model.panelSize)
+            hosting.autoresizingMask = [.width, .height]
+            // The panel overlaps the notch safe area; SwiftUI must not inset content for it.
+            hosting.safeAreaRegions = []
             panel.contentView = hosting
             self.panel = panel
         }
         panel?.setFrame(model.panelFrame, display: true)
+        panel?.contentView?.frame = NSRect(origin: .zero, size: model.panelSize)
         panel?.sharingType = prefs.hideFromScreenCapture ? .none : .readOnly
         panel?.orderFrontRegardless()
     }
@@ -108,7 +112,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "globalHotkey": updateHotKey()
         case "notchHeightOffset", "notchWidthOffset":
             // Sizes are computed from the preference, so only the panel frame needs a refresh.
-            if let model { panel?.setFrame(model.panelFrame, display: true) }
+            if let model {
+                panel?.setFrame(model.panelFrame, display: true)
+                panel?.contentView?.frame = NSRect(origin: .zero, size: model.panelSize)
+            }
             model?.preferencesChanged(key: key)
         default: model?.preferencesChanged(key: key)
         }
